@@ -8,19 +8,43 @@ const gl = canvas.getContext("webgl2");
 const errorDiv = document.getElementById("errorDiv");
 const errorParagraph = document.getElementById("errorParagraph");
 
-//=================
-// CANVAS RESIZING
-//=================
+// 2d canvas for 2d demo testing for ratation math
+const canv2 = document.getElementById("secondaryCanvas");
+const ctx = canv2.getContext("2d");
+
+const rotationAmount = 0.1;
+
+let polygonVertices;
+let polarVertices;
+let polygonCenter;
+
+//==================================================
+// CANVAS RESIZING & OTHER INITIALIZATION PROCESSES
+//==================================================
 
 window.addEventListener("load", () => {
 	resizeCanvas();
 	softRender();
+	loop();
 });
 
 function resizeCanvas() {
 	const area = canvas.getBoundingClientRect();
 	canvas.width = area.width;
 	canvas.height = area.height;
+	const area2 = canv2.getBoundingClientRect();
+	canv2.width = area2.width;
+	canv2.height = area2.height;
+}
+
+//=========
+// LOOPING
+//=========
+
+function loop() {
+	requestAnimationFrame(loop);
+
+	drawOnSecondCanvas();
 }
 
 //================
@@ -182,4 +206,115 @@ function renderTriangle() {
 		/** how many vertices the shape has in total, triangle has 3 */
 		3
 	);
+}
+
+function drawOnSecondCanvas() {
+	if (!polygonVertices) {
+		polygonVertices = [
+			{
+				x: canv2.width / 2,
+				y: canv2.height / 4,
+			},
+			{
+				x: canv2.width / 4,
+				y: (canv2.height / 4) * 3,
+			},
+			{
+				x: (canv2.width / 4) * 3,
+				y: (canv2.height / 4) * 3,
+			},
+		];
+	}
+
+	polygonCenter = getPolygonCenter(polygonVertices);
+
+	if (!polarVertices) {
+		polarVertices = cartesianShapeToPolarShape(polygonVertices);
+	}
+
+	rotatePolygon(polarVertices);
+	polygonVertices = polarShapeToCartesianShape(polarVertices);
+
+	draw2dPolygon(polygonVertices);
+
+	// draw the polygonCenter's location
+	ctx.fillStyle = "#f00";
+	ctx.fillRect(polygonCenter[0] - 5, polygonCenter[1] - 5, 10, 10);
+}
+
+function cartesianShapeToPolarShape(polygon) {
+	/* Assumes that 
+	vertex == objLit{
+		x: value,
+		y: value,
+		}
+	*/
+	polarPolygon = [];
+	for (let vertex of polygon) {
+		relativeVertexX = vertex.x - polygonCenter[0];
+		relativeVertexY = vertex.y - polygonCenter[1];
+		const theta = Math.atan2(relativeVertexY, relativeVertexX);
+		const r = Math.sqrt(relativeVertexX ** 2 + relativeVertexY ** 2);
+		polarPolygon.push({
+			theta: theta,
+			r: r,
+		});
+	}
+	return polarPolygon;
+}
+
+function getPolygonCenter(polygon) {
+	// assumes that shape == Array
+	let vertexCount = 0;
+	let totalVertexX = 0.0;
+	let totalVertexY = 0.0;
+
+	for (let vertex of polygon) {
+		totalVertexX += vertex.x;
+		totalVertexY += vertex.y;
+		vertexCount += 1;
+	}
+
+	return [totalVertexX / vertexCount, totalVertexY / vertexCount];
+}
+
+function polarShapeToCartesianShape(polygon) {
+	/* Assumes that 
+	vertex == objLit{
+		theta: value,
+		r: value,
+		}
+	*/
+	cartesianPolygon = [];
+	for (let vertex of polygon) {
+		const x = vertex.r * Math.cos(vertex.theta) + polygonCenter[0];
+		const y = vertex.r * Math.sin(vertex.theta) + polygonCenter[1];
+		cartesianPolygon.push({
+			x: x,
+			y: y,
+		});
+	}
+	return cartesianPolygon;
+}
+
+function draw2dPolygon(polygonVertices) {
+	ctx.clearRect(0, 0, canv2.width, canv2.height);
+
+	ctx.fillStyle = "#00f";
+
+	ctx.beginPath();
+
+	ctx.moveTo(polygonVertices[0].x, polygonVertices[0].y);
+
+	ctx.lineTo(polygonVertices[1].x, polygonVertices[1].y);
+	ctx.lineTo(polygonVertices[2].x, polygonVertices[2].y);
+	ctx.lineTo(polygonVertices[0].x, polygonVertices[0].y);
+
+	ctx.fill();
+}
+
+function rotatePolygon(polarVertices) {
+	for (vertex of polarVertices) {
+		vertex.theta += rotationAmount;
+	}
 }
