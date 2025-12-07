@@ -40,6 +40,58 @@ const orangeGradientTriangleColors = new Uint8Array([
 	246, 206, 29,
 ]);
 
+//================
+// SPAWNING STUFF
+//================
+
+// Unit: 1/100th percent chance for a new shape to spawn each frame
+const SPAWN_RATE = 0.08;
+
+// Unit: seconds of lifetime
+const MIN_SHAPE_TIME = 0.25;
+const MAX_SHAPE_TIME = 6;
+
+// Unit: canvas-pixels / second
+const MIN_SHAPE_SPEED = 125;
+const MAX_SHAPE_SPEED = 350;
+
+const MIN_SHAPE_SIZE = 2;
+const MAX_SHAPE_SIZE = 50;
+
+// Unit: dimensionless, but it is just a hard limit on the amount of shapes in order not to crash any computers
+const MAX_SHAPE_COUNT = 250;
+
+function getRandomNumberInRange(max, min) {
+	return Math.random() * (max - min) + min;
+}
+
+//===================
+// CLASS DEFINITIONS
+//===================
+
+class MovingShape {
+	// inputs:  Array     Array     Float Float     WebGL2Context (or smth like that)
+	constructor(position, velocity, size, lifetime, vao) {
+		this.position = position;
+		this.velocity = velocity;
+		this.size = size;
+		this.timeRemaining = lifetime;
+
+		this.vao = vao;
+	}
+
+	isAlive() {
+		return this.timeRemaining > 0;
+	}
+
+	update(dt) {
+		this.position[0] += this.velocity[0] * dt;
+		this.position[1] += this.velocity[1] * dt;
+
+		this.timeRemaining -= dt;
+	}
+}
+
 //=====================
 // SHADER SOURCE CODES
 //=====================
@@ -195,23 +247,10 @@ function softRender() {
 	try {
 		createTriangleRenders();
 	} catch (e) {
-		showError(`Error caught in renderTriangle(), error cause: ${e}`);
+		showError(`Error caught in createTriangleRenders(), error cause: ${e}`);
 	}
 }
 
-class MovingShape {
-	constructor(position, velocity, size, vao) {
-		this.position = position;
-		this.velocity = velocity;
-		this.size = size;
-		this.vao = vao;
-	}
-
-	update(dt) {
-		this.position[0] += this.velocity[0] * dt;
-		this.position[1] += this.velocity[1] * dt;
-	}
-}
 function createTriangleRenders() {
 	if (!canvas) {
 		showError("Error: canvas not found at renderTriangle()");
@@ -340,23 +379,57 @@ function createTriangleRenders() {
 		return;
 	}
 
-	const triangle1 = new MovingShape(
-		[1300, 500],
-		[10, 5],
-		100,
-		gradientTriangleVAO
-	);
-	const triangle2 = new MovingShape([300, 600], [30, 3], 300, rgbTriangleVAO);
+	let shapes = [];
+	let timeToNextSpawn = SPAWN_RATE;
 
 	let lastFrameT = performance.now();
 
 	const frame = () => {
+		//=============
+		// DEFINITIONS
+		//=============
+
 		const thisFrameT = performance.now();
 		const dt = (thisFrameT - lastFrameT) / 1000;
 		lastFrameT = thisFrameT;
 
-		triangle1.update(dt);
-		triangle2.update(dt);
+		timeToNextSpawn -= dt;
+
+		while (timeToNextSpawn < 0) {
+			// While loop in case of terrible framerate (or someone wanting to destroy their computer with huge spawnrate)
+			timeToNextSpawn += SPAWN_RATE;
+
+			const randomAngle = getRandomNumberInRange(0, 2 * Math.PI);
+			const randomSpeed = getRandomNumberInRange(
+				MAX_SHAPE_SPEED,
+				MIN_SHAPE_SPEED
+			);
+
+			const position = [canvas.width / 2, canvas.height / 2];
+			const velocity = [
+				randomSpeed * Math.cos(randomAngle),
+				randomSpeed * Math.sin(randomAngle),
+			];
+
+			const size = getRandomNumberInRange(MAX_SHAPE_SIZE, MIN_SHAPE_SIZE);
+
+			const lifetime = getRandomNumberInRange(
+				MAX_SHAPE_TIME,
+				MIN_SHAPE_TIME
+			);
+
+			const vao =
+				Math.random() < 0.5 ? rgbTriangleVAO : gradientTriangleVAO;
+
+			const shape = new MovingShape(
+				position,
+				velocity,
+				size,
+				lifetime,
+				vao
+			);
+			shapes.push(shape);
+		}
 
 		const area = canvas.getBoundingClientRect();
 		canvas.width = area.width;
@@ -369,51 +442,27 @@ function createTriangleRenders() {
 
 		gl.useProgram(triangleShaderProgram);
 
-		// This is here for redundancy, I'm pretty good at forgetting stuff so this is here such that the program/demo will be less error-prone
-		gl.bindBuffer(gl.ARRAY_BUFFER, triangleGeoBuffer);
-		gl.vertexAttribPointer(
-			// these comments aren't really needed, but if I need to debug at some point, these will be necessary for my forgetful brain
-
-			// index: which attribute to use
-			vertexPositionAttributeLocation,
-
-			// size: how many components does said attribute have?
-			2,
-
-			// type: what is this data's type?
-			gl.FLOAT,
-
-			// normalized: makes ints into floats, I don't need that
-			false,
-
-			// stride: how many bytes to move forward to find the next vertex's attributes
-			0,
-
-			// offset: how many bytes should be skipped before looking at attributes (it's always the first one since there is only 1 option for it, so skip 0)
-			0
-		);
-
 		gl.uniform2f(canvasSizeUniform, canvas.width, canvas.height);
 
-		// triangle1
-		gl.uniform1f(shapeSizeUniform, triangle1.size);
-		gl.uniform2f(
-			shapeLocationUniform,
-			triangle1.position[0],
-			triangle1.position[1]
-		);
-		gl.bindVertexArray(triangle1.vao);
-		gl.drawArrays(gl.TRIANGLES, 0, 3);
+		// Update shapes
+		for (let i = 0; i < shapes.length; i++) {
+			shapes[i].update(dt);
 
-		// triangle2
-		gl.uniform1f(shapeSizeUniform, triangle2.size);
-		gl.uniform2f(
-			shapeLocationUniform,
-			triangle2.position[0],
-			triangle2.position[1]
-		);
-		gl.bindVertexArray(triangle2.vao);
-		gl.drawArrays(gl.TRIANGLES, 0, 3);
+			gl.uniform1f(shapeSizeUniform, shapes[i].size);
+			gl.uniform2f(
+				shapeLocationUniform,
+				shapes[i].position[0],
+				shapes[i].position[1]
+			);
+
+			gl.bindVertexArray(shapes[i].vao);
+			gl.drawArrays(gl.TRIANGLES, 0, 3);
+		}
+
+		shapes = shapes
+			.filter((shape) => shape.isAlive())
+			.slice(0, MAX_SHAPE_COUNT);
+
 		requestAnimationFrame(frame);
 	};
 	requestAnimationFrame(frame);
