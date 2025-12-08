@@ -8,6 +8,8 @@ const gl = canvas.getContext("webgl2");
 const errorDiv = document.getElementById("errorDiv");
 const errorParagraph = document.getElementById("errorParagraph");
 
+const fullscreenButton = document.getElementById("fullscreenButton");
+
 const triangleVertices = new Float32Array([
 	// Top middle
 	0.0, 1.0,
@@ -53,7 +55,7 @@ const MAX_SHAPE_TIME = 6;
 
 // Unit: canvas-pixels / second
 const MIN_SHAPE_SPEED = 125;
-const MAX_SHAPE_SPEED = 350;
+const MAX_SHAPE_SPEED = 900;
 
 const MIN_SHAPE_SIZE = 2;
 const MAX_SHAPE_SIZE = 50;
@@ -126,21 +128,33 @@ const fragmentShaderSourceCodeGLSL = `#version 300 es
 
 	output_color = vec4(fragment_color, 1.0);
 
-	}`;
+}`;
 
-//======
-//  2D
-//======
+//===================
+// SCREENSAVER STUFF
+//===================
 
-// 2d canvas for 2d demo testing for ratation math
-const canv2 = document.getElementById("secondaryCanvas");
-const ctx = canv2.getContext("2d");
+fullscreenButton.addEventListener("click", () => {
+	document.documentElement.requestFullscreen();
+	document.body.style.cursor = "none";
+	fullscreenButton.hidden = true;
+});
 
-const rotationAmount = 0.1;
+document.addEventListener("mousemove", () => {
+	if (document.fullscreenElement) {
+		document.exitFullscreen();
+		document.body.style.cursor = "auto";
+		fullscreenButton.hidden = false;
+	}
+});
 
-let polygonVertices;
-let polarVertices;
-let polygonCenter;
+document.addEventListener("keydown", () => {
+	if (document.fullscreenElement) {
+		document.exitFullscreen();
+		document.body.style.cursor = "auto";
+		fullscreenButton.hidden = false;
+	}
+});
 
 //==================================================
 // CANVAS RESIZING & OTHER INITIALIZATION PROCESSES
@@ -149,26 +163,12 @@ let polygonCenter;
 window.addEventListener("load", () => {
 	resizeCanvas();
 	softRender();
-	loop();
 });
 
 function resizeCanvas() {
 	const area = canvas.getBoundingClientRect();
 	canvas.width = area.width;
 	canvas.height = area.height;
-	const area2 = canv2.getBoundingClientRect();
-	canv2.width = area2.width;
-	canv2.height = area2.height;
-}
-
-//=========
-// LOOPING
-//=========
-
-function loop() {
-	requestAnimationFrame(loop);
-
-	drawOnSecondCanvas();
 }
 
 //================
@@ -431,11 +431,7 @@ function createTriangleRenders() {
 			shapes.push(shape);
 		}
 
-		const area = canvas.getBoundingClientRect();
-		canvas.width = area.width;
-		canvas.height = area.height;
-
-		gl.clearColor(0.5, 0.5, 0.5, 1);
+		gl.clearColor(0, 0, 0, 1);
 		gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 		gl.viewport(0, 0, canvas.width, canvas.height);
@@ -456,7 +452,16 @@ function createTriangleRenders() {
 			);
 
 			gl.bindVertexArray(shapes[i].vao);
-			gl.drawArrays(gl.TRIANGLES, 0, 3);
+			gl.drawArrays(
+				// tells the GPU what kind of thind to draw
+				gl.TRIANGLES,
+
+				// which vertex to start from, idk why this is needed since polygons anyways will always do every edge anyways
+				0,
+
+				// how many vertices the shape has in total, triangle has 3
+				3
+			);
 		}
 
 		shapes = shapes
@@ -466,131 +471,4 @@ function createTriangleRenders() {
 		requestAnimationFrame(frame);
 	};
 	requestAnimationFrame(frame);
-}
-
-/** 	/** tells the GPU what kind of thind to draw 
-gl.TRIANGLES,
-	/** which vertex to start from, idk why this is needed since polygons anyways will always do every edge anyways 
-	0,
-	/** how many vertices the shape has in total, triangle has 3 
-			3 */
-
-//======================
-// SPINNING 2D TRIANGLE
-//======================
-
-// I will be keeping this code here as reference until the submitting commit
-
-function drawOnSecondCanvas() {
-	if (!polygonVertices) {
-		polygonVertices = [
-			{
-				x: canv2.width / 2,
-				y: canv2.height / 4,
-			},
-			{
-				x: canv2.width / 4,
-				y: (canv2.height / 4) * 3,
-			},
-			{
-				x: (canv2.width / 4) * 3,
-				y: (canv2.height / 4) * 3,
-			},
-		];
-	}
-
-	polygonCenter = getPolygonCenter(polygonVertices);
-
-	if (!polarVertices) {
-		polarVertices = cartesianShapeToPolarShape(polygonVertices);
-	}
-
-	rotatePolygon(polarVertices);
-	polygonVertices = polarShapeToCartesianShape(polarVertices);
-
-	draw2dPolygon(polygonVertices);
-
-	// draw the polygonCenter's location
-	ctx.fillStyle = "#f00";
-	ctx.fillRect(polygonCenter[0] - 5, polygonCenter[1] - 5, 10, 10);
-}
-
-function cartesianShapeToPolarShape(polygon) {
-	/* Assumes that 
-	vertex == objLit{
-		x: value,
-		y: value,
-		}
-	*/
-	polarPolygon = [];
-	for (let vertex of polygon) {
-		relativeVertexX = vertex.x - polygonCenter[0];
-		relativeVertexY = vertex.y - polygonCenter[1];
-		const theta = Math.atan2(relativeVertexY, relativeVertexX);
-		const r = Math.sqrt(relativeVertexX ** 2 + relativeVertexY ** 2);
-		polarPolygon.push({
-			theta: theta,
-			r: r,
-		});
-	}
-	return polarPolygon;
-}
-
-function getPolygonCenter(polygon) {
-	// assumes that shape == Array
-	let vertexCount = 0;
-	let totalVertexX = 0.0;
-	let totalVertexY = 0.0;
-
-	for (let vertex of polygon) {
-		totalVertexX += vertex.x;
-		totalVertexY += vertex.y;
-		vertexCount += 1;
-	}
-
-	return [totalVertexX / vertexCount, totalVertexY / vertexCount];
-}
-
-function polarShapeToCartesianShape(polygon) {
-	/* Assumes that 
-	vertex == objLit{
-		theta: value,
-		r: value,
-		}
-	*/
-	cartesianPolygon = [];
-	for (let vertex of polygon) {
-		const x = vertex.r * Math.cos(vertex.theta) + polygonCenter[0];
-		const y = vertex.r * Math.sin(vertex.theta) + polygonCenter[1];
-		cartesianPolygon.push({
-			x: x,
-			y: y,
-		});
-	}
-	return cartesianPolygon;
-}
-
-function draw2dPolygon(polygonVertices) {
-	ctx.clearRect(0, 0, canv2.width, canv2.height);
-
-	ctx.fillStyle = "#00f";
-
-	ctx.beginPath();
-
-	ctx.moveTo(polygonVertices[0].x, polygonVertices[0].y);
-
-	let index = 0;
-
-	for (let vertex of polygonVertices) {
-		ctx.lineTo(polygonVertices[index].x, polygonVertices[index].y);
-		index++;
-	}
-
-	ctx.fill();
-}
-
-function rotatePolygon(polarVertices) {
-	for (vertex of polarVertices) {
-		vertex.theta += rotationAmount;
-	}
 }
